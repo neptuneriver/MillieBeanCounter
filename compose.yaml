@@ -1,0 +1,40 @@
+# Millie daycare sync. The .command files run `docker compose` with this file for you.
+name: millie-sync
+
+services:
+  sync:
+    build: .
+    image: millie-sync:1.1.2
+    pull_policy: never
+    init: true
+    restart: unless-stopped
+    command: ["serve"]
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    environment:
+      MILLIE_DATA: /data
+      TZ: America/New_York
+    volumes:
+      # Settings (including passwords), the "already logged" journal and status
+      # live here, inside Docker, never in this folder.
+      - millie-data:/data
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m
+    healthcheck:
+      test: ["CMD", "python", "-m", "millie_sync", "health"]
+      interval: 5m
+      timeout: 30s
+      start_period: 2m
+      retries: 2
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  millie-data:
+    name: millie-sync-data
