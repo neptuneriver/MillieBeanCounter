@@ -1,8 +1,8 @@
-# Millie sync
+# MillieBeanCounter
 
 Daycare daily sheets in, baby tracker entries out.
 
-Millie sync reads the "Daily Sheet" emails that daycares send through Kaymbu (built
+MillieBeanCounter reads the "Daily Sheet" emails that daycares send through Kaymbu (built
 and tested with a Goddard School classroom's sheets) and logs every bottle, nap and
 diaper in the Huckleberry baby tracker app. It also keeps a complete, auditable copy of
 everything in Huckleberry as an Excel workbook, CSV files, a SQLite database and,
@@ -20,7 +20,7 @@ evening is slow, and it's easy to end up a few minutes or an ounce off.
 The first version of this project drove the Huckleberry Android app in an emulator and
 read the screen with OCR. This version skips all of that and talks to Huckleberry
 directly through [py-huckleberry-api](https://github.com/Woyken/py-huckleberry-api),
-an unofficial, reverse-engineered client.
+an unofficial, reverse-engineered client. Shout out Woyken!
 
 ## How it works
 
@@ -109,9 +109,6 @@ Josephine, Monday, October 12, 2026
   Naps: 3, 2h 3m total
   Diapers: 4 (2 wet, 1 wet + BM, 1 BM)
 ```
-
-(That's the made-up sheet the tests use.) Anything it couldn't read with certainty is
-listed under "Needs a look (not added)" so you can add it by hand.
 
 ## The data
 
