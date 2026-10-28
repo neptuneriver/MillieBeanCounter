@@ -4,6 +4,9 @@ __pycache__/
 *.zip
 .ruff_cache/
 # Your data lives outside this folder, but just in case:
-Millie Data/
+MillieBeanCounter Data/
 *.db
 millie-export.*
+# Personal files (your accounts and family details) stay off GitHub:
+My Setup.command
+START_HERE.md

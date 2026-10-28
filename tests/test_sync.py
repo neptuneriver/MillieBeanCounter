@@ -8,11 +8,11 @@ from pathlib import Path
 
 from fakes import FakeMailbox, Outbox, at, edit_email, family, fixture, make_api, settings, with_message_id
 
-from millie_sync.huckleberry import BOTTLE_NOTES, Huckleberry
-from millie_sync.journal import Journal
-from millie_sync.sync import describe_report, run_once
+from millie_bean_counter.huckleberry import BOTTLE_NOTES, Huckleberry
+from millie_bean_counter.journal import Journal
+from millie_bean_counter.sync import describe_report, run_once
 
-NOW = at("2026-10-22T22:00:00")  # the evening the October 12 sheet was forwarded
+NOW = at("2026-10-22T22:00:00")  # the evening the (made-up) October 12 sheet was forwarded
 
 
 def ts(text: str) -> float:
@@ -39,17 +39,17 @@ class SyncTest(unittest.TestCase):
             notifier=self.outbox,
         )
 
-    def test_october_12_lands_in_huckleberry_exactly(self):
+    def test_daily_sheet_lands_in_huckleberry_exactly(self):
         report = self.run_sync([fixture("forwarded-oct-12.eml")])
         self.assertEqual(report.error, "")
         self.assertEqual(report.added, 9)
-        self.assertEqual(report.child_name, "Millie")
+        self.assertEqual(report.child_name, "Josie")
 
         diapers = self.store.intervals("diaper")
-        self.assertEqual([d["mode"] for d in diapers], ["both", "both", "pee", "pee"])
+        self.assertEqual([d["mode"] for d in diapers], ["pee", "both", "pee", "poo"])
         self.assertEqual(
             [d["start"] for d in diapers],
-            [ts("2026-10-12T11:36"), ts("2026-10-12T13:54"), ts("2026-10-12T15:45"), ts("2026-10-12T16:28")],
+            [ts("2026-10-12T09:10"), ts("2026-10-12T11:50"), ts("2026-10-12T13:35"), ts("2026-10-12T15:40")],
         )
         self.assertTrue(all(d["offset"] == 240 for d in diapers))  # EDT, minutes behind UTC
         self.assertEqual(diapers[0]["notes"], "From daycare")
@@ -57,32 +57,35 @@ class SyncTest(unittest.TestCase):
         bottles = self.store.intervals("feed")
         self.assertEqual(
             [(b["mode"], b["amount"], b["units"], b["bottleType"]) for b in bottles],
-            [("bottle", 5.0, "oz", "Breast Milk"), ("bottle", 4.0, "oz", "Breast Milk")],
+            [("bottle", 4.0, "oz", "Breast Milk"), ("bottle", 3.5, "oz", "Breast Milk")],
         )
-        self.assertEqual([b["start"] for b in bottles], [ts("2026-10-12T13:00"), ts("2026-10-12T15:30")])
+        self.assertEqual([b["start"] for b in bottles], [ts("2026-10-12T10:30"), ts("2026-10-12T14:15")])
         if BOTTLE_NOTES:
-            self.assertEqual(bottles[0]["notes"], "From daycare · offered 5.25 oz, took 5 oz")
-            self.assertEqual(bottles[1]["notes"], "From daycare · offered 5.25 oz, took 4 oz · teacher: And Mrs T.")
+            self.assertEqual(bottles[0]["notes"], "From daycare · offered 4.5 oz, took 4 oz")
+            self.assertEqual(
+                bottles[1]["notes"],
+                "From daycare · offered 4.5 oz, took 3.5 oz · teacher: Took a little break halfway through.",
+            )
 
         naps = self.store.intervals("sleep")
         self.assertEqual(
             [(n["start"], n["duration"]) for n in naps],
-            [(ts("2026-10-12T12:23"), 32 * 60), (ts("2026-10-12T14:40"), 46 * 60), (ts("2026-10-12T16:35"), 49 * 60)],
+            [(ts("2026-10-12T09:40"), 35 * 60), (ts("2026-10-12T12:10"), 48 * 60), (ts("2026-10-12T14:45"), 40 * 60)],
         )
         self.assertTrue(all(n["offset"] == 240 for n in naps))
 
         # "Last diaper/bottle/sleep" summaries point at the latest entries.
-        self.assertEqual(self.store.docs[("diaper", "child-1")]["prefs"]["lastDiaper"]["start"], ts("2026-10-12T16:28"))
-        self.assertEqual(self.store.docs[("feed", "child-1")]["prefs"]["lastBottle"]["bottleAmount"], 4.0)
-        self.assertEqual(self.store.docs[("sleep", "child-1")]["prefs"]["lastSleep"]["duration"], 49 * 60)
+        self.assertEqual(self.store.docs[("diaper", "child-1")]["prefs"]["lastDiaper"]["start"], ts("2026-10-12T15:40"))
+        self.assertEqual(self.store.docs[("feed", "child-1")]["prefs"]["lastBottle"]["bottleAmount"], 3.5)
+        self.assertEqual(self.store.docs[("sleep", "child-1")]["prefs"]["lastSleep"]["duration"], 40 * 60)
 
         self.assertEqual(len(self.outbox.sent), 1)
         subject, body = self.outbox.sent[0]
-        self.assertEqual(subject, "Millie Mon Oct 12: 9 added to Huckleberry")
-        self.assertIn("Bottles: 2, 9 oz total", body)
-        self.assertIn("Naps: 3, 2h 7m total", body)
-        self.assertIn("Diapers: 4 (2 wet + BM, 2 wet)", body)
-        self.assertIn("3:30 PM bottle: And Mrs T.", body)
+        self.assertEqual(subject, "Josie Mon Oct 12: 9 added to Huckleberry")
+        self.assertIn("Bottles: 2, 7.5 oz total", body)
+        self.assertIn("Naps: 3, 2h 3m total", body)
+        self.assertIn("Diapers: 4 (2 wet, 1 wet + BM, 1 BM)", body)
+        self.assertIn("2:15 PM bottle: Took a little break halfway through.", body)
 
         journal = Journal(self.data / "journal.sqlite3")
         try:
@@ -115,8 +118,8 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(report.added, 9)
 
     def test_entries_already_in_huckleberry_are_left_alone(self):
-        self.store.add_interval("diaper", {"mode": "pee", "start": ts("2026-10-12T11:36"), "offset": 240})
-        self.store.add_interval("sleep", {"start": ts("2026-10-12T12:20"), "duration": 38 * 60, "offset": 240})
+        self.store.add_interval("diaper", {"mode": "pee", "start": ts("2026-10-12T11:50"), "offset": 240})
+        self.store.add_interval("sleep", {"start": ts("2026-10-12T12:07"), "duration": 50 * 60, "offset": 240})
         # Older entries can live inside a batched "multi" document.
         self.store.add_interval(
             "feed",
@@ -125,8 +128,8 @@ class SyncTest(unittest.TestCase):
                 "data": {
                     "a": {
                         "mode": "bottle",
-                        "start": ts("2026-10-12T13:00"),
-                        "amount": 5,
+                        "start": ts("2026-10-12T10:30"),
+                        "amount": 4,
                         "units": "oz",
                         "bottleType": "Breast Milk",
                         "offset": 240,
@@ -140,25 +143,25 @@ class SyncTest(unittest.TestCase):
         sheet = report.messages[0].sheets[0]
         reasons = [why for _, why in sheet.already]
         self.assertEqual(len(reasons), 3)
-        self.assertIn("Huckleberry already has a diaper at 11:36 AM (wet)", reasons)
-        self.assertIn("Huckleberry already has a nap at 12:20 PM (38 min)", reasons)
-        self.assertIn("Huckleberry already has a bottle at 1:00 PM (5 oz Breast Milk)", reasons)
+        self.assertIn("Huckleberry already has a diaper at 11:50 AM (wet)", reasons)
+        self.assertIn("Huckleberry already has a nap at 12:07 PM (50 min)", reasons)
+        self.assertIn("Huckleberry already has a bottle at 10:30 AM (4 oz Breast Milk)", reasons)
         self.assertEqual(len(self.store.intervals("diaper")), 4)  # 3 new + the one that was there
         # Where Huckleberry's entry disagrees with the sheet, you're told; nothing is changed.
         self.assertEqual(
             sheet.sheet.problems,
             [
-                "11:36 AM diaper: Huckleberry has wet, the sheet says wet + BM. Left as it was.",
+                "11:50 AM diaper: Huckleberry has wet, the sheet says wet + BM. Left as it was.",
             ],
         )
-        self.assertEqual(self.outbox.sent[0][0], "Millie Mon Oct 12: 6 added to Huckleberry, 1 needs a look")
+        self.assertEqual(self.outbox.sent[0][0], "Josie Mon Oct 12: 6 added to Huckleberry, 1 needs a look")
 
-    def test_your_hand_entered_october_12_entries_are_recognised(self):
-        # What Huckleberry really had for Oct 12 daytime (from the export you sent):
-        # copied by hand from the sheet, a few minutes off. Only the naps were missing.
-        for clock, mode in (("11:31", "both"), ("14:04", "both"), ("15:46", "pee"), ("16:25", "pee")):
+    def test_hand_entries_a_few_minutes_off_are_recognised(self):
+        # Diapers and bottles copied into the app by hand from the sheet, 0 to 10
+        # minutes off its times (as happens in real life). Only the naps are missing.
+        for clock, mode in (("09:05", "pee"), ("12:00", "both"), ("13:36", "pee"), ("15:37", "poo")):
             self.store.add_interval("diaper", {"mode": mode, "start": ts(f"2026-10-12T{clock}"), "offset": 240})
-        for clock, amount in (("13:00", 5), ("15:24", 4)):
+        for clock, amount in (("10:30", 4), ("14:09", 3.5)):
             self.store.add_interval(
                 "feed",
                 {
@@ -177,12 +180,14 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(item.sheet.problems, [])
         self.assertEqual(len(self.store.intervals("diaper")), 4)
         self.assertEqual(len(self.store.intervals("feed")), 2)
-        self.assertEqual([item.key_of(e) for e in item.added], ["101226AN1", "101226AN2", "101226AN3"])
+        self.assertEqual([item.key_of(e) for e in item.added], ["101226SN1", "101226SN2", "101226SN3"])
 
     def test_one_hand_entry_cannot_hide_two_daycare_diapers(self):
-        # Only one wet diaper was entered by hand, between the 3:45 and 4:28 daycare ones.
-        self.store.add_interval("diaper", {"mode": "pee", "start": ts("2026-10-12T15:50"), "offset": 240})
-        report = self.run_sync([fixture("forwarded-oct-12.eml")])
+        # Daycare changed two wet diapers 10 minutes apart; one was entered by hand in
+        # between. It can stand in for only one of them.
+        sheet = edit_email(fixture("forwarded-oct-12.eml"), "BM diaper at 3:40pm", "Wet diaper at 1:45pm")
+        self.store.add_interval("diaper", {"mode": "pee", "start": ts("2026-10-12T13:40"), "offset": 240})
+        report = self.run_sync([sheet])
         item = report.messages[0].sheets[0]
         self.assertEqual(len(item.already), 1)
         self.assertEqual(len(item.added), 8)
@@ -190,7 +195,9 @@ class SyncTest(unittest.TestCase):
     def test_corrected_sheet_is_reported_not_applied(self):
         self.run_sync([fixture("forwarded-oct-12.eml")])
         writes = len(self.store.writes)
-        corrected = edit_email(fixture("forwarded-oct-12.eml"), "took 5 ounces at 1:00pm", "took 4.5 ounces at 1:00pm")
+        corrected = edit_email(
+            fixture("forwarded-oct-12.eml"), "took 4 ounces at 10:30am", "took 3.5 ounces at 10:30am"
+        )
         corrected = with_message_id(corrected, "<corrected@example.com>")
         report = self.run_sync([corrected])
         self.assertEqual(len(self.store.writes), writes)  # Huckleberry untouched
@@ -199,12 +206,12 @@ class SyncTest(unittest.TestCase):
             problems,
             [
                 (
-                    'Daycare changed "1:00 PM Bottle 5 oz breast milk (offered 5.25 oz)" to '
-                    '"1:00 PM Bottle 4.5 oz breast milk (offered 5.25 oz)". Huckleberry was left as it was.'
+                    'Daycare changed "10:30 AM Bottle 4 oz breast milk (offered 4.5 oz)" to '
+                    '"10:30 AM Bottle 3.5 oz breast milk (offered 4.5 oz)". Huckleberry was left as it was.'
                 )
             ],
         )
-        self.assertEqual(self.outbox.sent[-1][0], "Millie Mon Oct 12: 0 added to Huckleberry, 1 needs a look")
+        self.assertEqual(self.outbox.sent[-1][0], "Josie Mon Oct 12: 0 added to Huckleberry, 1 needs a look")
 
     def test_preview_writes_nothing(self):
         report = self.run_sync([fixture("forwarded-oct-12.eml")], dry_run=True)
@@ -223,7 +230,7 @@ class SyncTest(unittest.TestCase):
     def test_other_child_is_ignored(self):
         report = self.run_sync([fixture("forwarded-oct-12.eml")], DAYCARE_CHILD="Oliver")
         self.assertEqual(report.messages[0].status, "ignored")
-        self.assertIn("Skipped Emilia's sheet", report.messages[0].reason)
+        self.assertIn("Skipped Josephine's sheet", report.messages[0].reason)
         self.assertEqual(self.store.writes, [])
 
     def test_import_since_skips_older_sheets(self):
@@ -252,7 +259,7 @@ class SyncTest(unittest.TestCase):
         report = self.run_sync([fixture("forwarded-oct-12.eml")])
         self.assertEqual(report.messages[0].status, "error")
         self.assertIn("A newer py-huckleberry-api usually fixes this", report.error)
-        self.assertIn("1:00 PM bottle", report.error)
+        self.assertIn("10:30 AM bottle", report.error)
         self.assertEqual(self.store.intervals("feed"), [])
 
     def test_crash_after_write_before_journal_is_caught_by_app_check(self):
@@ -297,11 +304,11 @@ class ChildPickingTest(unittest.TestCase):
             return asyncio.run(go())
 
     def test_single_child_needs_no_name(self):
-        self.assertEqual(self.pick(family()), ("child-1", "Millie"))
+        self.assertEqual(self.pick(family()), ("child-1", "Josie"))
 
     def test_picks_by_name_or_nickname(self):
-        store = family((("c1", "Emilia", "Millie"), ("c2", "Oliver", "Ollie")))
-        self.assertEqual(self.pick(store, "millie"), ("c1", "Emilia"))
+        store = family((("c1", "Josephine", "Josie"), ("c2", "Oliver", "Ollie")))
+        self.assertEqual(self.pick(store, "josie"), ("c1", "Josephine"))
         self.assertEqual(self.pick(store, "Oliver"), ("c2", "Oliver"))
 
     def test_close_shuts_the_grpc_channel(self):
@@ -326,12 +333,12 @@ class ChildPickingTest(unittest.TestCase):
         self.assertEqual(closed, ["channel", "session"])
 
     def test_unknown_name_lists_the_children(self):
-        from millie_sync.huckleberry import HuckleberryError
+        from millie_bean_counter.huckleberry import HuckleberryError
 
-        store = family((("c1", "Emilia", "Millie"), ("c2", "Oliver", "Ollie")))
+        store = family((("c1", "Josephine", "Josie"), ("c2", "Oliver", "Ollie")))
         with self.assertRaises(HuckleberryError) as caught:
             self.pick(store, "Mila")
-        self.assertIn("Emilia, Oliver", str(caught.exception))
+        self.assertIn("Josephine, Oliver", str(caught.exception))
         with self.assertRaises(HuckleberryError):
             self.pick(store, "")
 

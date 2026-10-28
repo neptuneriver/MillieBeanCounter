@@ -19,12 +19,12 @@ from zoneinfo import ZoneInfo
 from fakes import FIXTURES, FakeMailbox, Outbox, at, family, fixture, make_api, settings
 from rebuild import load_into
 
-from millie_sync import __main__ as cli
-from millie_sync import config, data, export, gsheets, keys, verify
-from millie_sync.history import read_all
-from millie_sync.huckleberry import Huckleberry
-from millie_sync.journal import Journal
-from millie_sync.sync import run_once
+from millie_bean_counter import __main__ as cli
+from millie_bean_counter import config, data, export, gsheets, keys, verify
+from millie_bean_counter.history import read_all
+from millie_bean_counter.huckleberry import Huckleberry
+from millie_bean_counter.journal import Journal
+from millie_bean_counter.sync import run_once
 
 TZ = ZoneInfo("America/New_York")
 SAMPLE = (FIXTURES / "huckleberry-sample.csv").read_text()
@@ -62,7 +62,7 @@ class HuckleberryFormatTest(Base):
 
     def test_verify_spots_differences(self):
         book = self.workbook()
-        changed = SAMPLE.replace('"90ml"', '"95ml"').replace('"Meds","2026-09-03 09:15",,,,"D Drops",,,\n', "")
+        changed = SAMPLE.replace('"90ml"', '"95ml"').replace('"Meds","2026-09-03 09:15",,,,"Vitamin D",,,\n', "")
         result = verify.compare(verify.read_their_csv(changed), book.huckleberry_rows)
         self.assertFalse(result.perfect)
         self.assertEqual(len(result.different), 1)
@@ -74,7 +74,7 @@ class HuckleberryFormatTest(Base):
     def test_verify_ignores_order_of_diaper_parts_and_newer_entries(self):
         book = self.workbook()
         swapped = SAMPLE.replace("Both, poo:large pee:small", "Both, pee:small poo:large")
-        older = "\n".join(line for line in swapped.splitlines() if "2026-09-03 21:10" not in line) + "\n"
+        older = "\n".join(line for line in swapped.splitlines() if "2026-09-03 21:25" not in line) + "\n"
         result = verify.compare(verify.read_their_csv(older), book.huckleberry_rows)
         self.assertTrue(result.perfect)
         self.assertEqual(result.ours_newer, 1)
@@ -127,9 +127,9 @@ class SheetsTest(Base):
             [s.name for s in book.sheets],
             [
                 "All entries",
-                "Agent diapers",
-                "Agent naps",
-                "Agent bottles",
+                "Daycare diapers",
+                "Daycare naps",
+                "Daycare bottles",
                 "Diapers",
                 "Sleep",
                 "Bottles",
@@ -185,7 +185,7 @@ class SheetsTest(Base):
 
 class OddEntriesTest(unittest.TestCase):
     def test_a_corrupt_entry_is_skipped_not_fatal(self):
-        from millie_sync.history import normalize
+        from millie_bean_counter.history import normalize
 
         self.assertIsNone(normalize("diaper", "a", {"start": 1e30, "mode": "pee"}, TZ))
         entry = normalize("diaper", "b", {"start": 1760000000, "mode": "pee", "offset": 99999}, TZ)
@@ -199,7 +199,7 @@ class FilesTest(Base):
         folder = self.data / "out"
         written = {str(p.relative_to(folder)) for p in export.write_all(book, folder)}
         self.assertIn("csv/all_entries.csv", written)
-        self.assertIn("csv/agent_naps.csv", written)
+        self.assertIn("csv/daycare_naps.csv", written)
         self.assertIn("huckleberry_format.csv", written)
         self.assertIn("millie.db", written)
         self.assertEqual((folder / "huckleberry_format.csv").read_text(), SAMPLE)
@@ -244,10 +244,10 @@ class FilesTest(Base):
         self.assertIn("README.txt", names)
 
 
-class AgentSheetsTest(unittest.TestCase):
+class DaycareSheetsTest(unittest.TestCase):
     """A real daycare import followed by an export."""
 
-    def test_agent_entries_get_a_keys_and_their_own_sheets(self):
+    def test_synced_entries_get_s_keys_and_their_own_sheets(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = family()
             load_into(store, "\n".join(SAMPLE.splitlines()[:1]) + "\n")  # header only: empty history
@@ -260,31 +260,33 @@ class AgentSheetsTest(unittest.TestCase):
                 huckleberry_factory=factory,
                 notifier=Outbox(),
             )
-            # Someone deletes one of the agent's diapers in the app afterwards.
+            # Someone deletes one of the synced diapers in the app afterwards.
             gone = next(p for p, d in store.docs.items() if p[0] == "diaper" and len(p) == 4 and "intervals" in p)
             del store.docs[gone]
             result = data.export_now(s, huckleberry_factory=factory, push_sheet=False)
             book = result.workbook
             diapers = [
-                dict(zip(book.sheet("Agent diapers").columns, r, strict=True)) for r in book.sheet("Agent diapers").rows
+                dict(zip(book.sheet("Daycare diapers").columns, r, strict=True))
+                for r in book.sheet("Daycare diapers").rows
             ]
-            self.assertEqual([d["key"] for d in diapers], ["101226AD1", "101226AD2", "101226AD3", "101226AD4"])
-            self.assertEqual([d["kind"] for d in diapers], ["wet + BM", "wet + BM", "wet", "wet"])
+            self.assertEqual([d["key"] for d in diapers], ["101226SD1", "101226SD2", "101226SD3", "101226SD4"])
+            self.assertEqual([d["kind"] for d in diapers], ["wet", "wet + BM", "wet", "BM"])
             self.assertEqual(sorted(d["in_huckleberry"] for d in diapers), ["no", "yes", "yes", "yes"])
-            self.assertEqual(diapers[0]["daycare_email"], "Fwd: Emilia's Daily Sheet for Monday, October 12th")
-            naps = book.sheet("Agent naps").rows
-            self.assertEqual([r[0] for r in naps], ["101226AN1", "101226AN2", "101226AN3"])
+            self.assertEqual(diapers[0]["daycare_email"], "Fwd: Josephine's Daily Sheet for Monday, October 12th")
+            naps = book.sheet("Daycare naps").rows
+            self.assertEqual([r[0] for r in naps], ["101226SN1", "101226SN2", "101226SN3"])
             bottles = [
-                dict(zip(book.sheet("Agent bottles").columns, r, strict=True)) for r in book.sheet("Agent bottles").rows
+                dict(zip(book.sheet("Daycare bottles").columns, r, strict=True))
+                for r in book.sheet("Daycare bottles").rows
             ]
             self.assertEqual(
                 [(b["key"], b["amount"], b["offered"], b["teacher_comment"]) for b in bottles],
-                [("101226AB1", 5, 5.25, ""), ("101226AB2", 4, 5.25, "And Mrs T.")],
+                [("101226SB1", 4, 4.5, ""), ("101226SB2", 3.5, 4.5, "Took a little break halfway through.")],
             )
             sources = {r[0]: r[1] for r in book.sheet("All entries").rows}
-            self.assertEqual(sources["101226AN1"], "agent")
+            self.assertEqual(sources["101226SN1"], "sync")
             self.assertEqual(len(book.sheet("All entries").rows), 8)  # 9 added, 1 deleted in the app
-            self.assertTrue((Path(tmp) / "exports" / "latest" / "csv" / "agent_bottles.csv").exists())
+            self.assertTrue((Path(tmp) / "exports" / "latest" / "csv" / "daycare_bottles.csv").exists())
 
 
 class FakeResponse:
@@ -309,7 +311,7 @@ class FakeSheetsSession:
         if self.status >= 400:
             return FakeResponse(self.status, {"error": {"message": self.message}})
         if params and params.get("fields") == "properties.title":
-            return FakeResponse(200, {"properties": {"title": "Millie data"}})
+            return FakeResponse(200, {"properties": {"title": "MillieBeanCounter data"}})
         sheets = [{"properties": {"sheetId": i, "title": t}} for t, i in self.tabs.items()]
         return FakeResponse(200, {"sheets": sheets})
 
@@ -342,6 +344,15 @@ class GoogleSheetTest(Base):
         self.assertIn("'All entries'!A1:M23", ranges)
         self.assertEqual(data_calls[0][2]["valueInputOption"], "RAW")
         self.assertEqual(cells, sum((len(s.rows) + 1) * len(s.columns) for s in book.sheets))
+
+    def test_tabs_from_before_the_rename_are_removed(self):
+        session = FakeSheetsSession(tabs=("Sheet1", "Agent diapers", "Agent naps", "Agent bottles"))
+        gsheets.GoogleSheet("1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789", session).push(self.workbook())
+        posts = [c for c in session.calls if c[0] == "post" and c[1].endswith(":batchUpdate")]
+        deleted = [r["deleteSheet"]["sheetId"] for r in posts[1][2]["requests"] if "deleteSheet" in r]
+        self.assertEqual(deleted, [1, 2, 3])
+        added = [r["addSheet"]["properties"]["title"] for r in posts[0][2]["requests"]]
+        self.assertIn("Daycare diapers", added)
 
     def test_big_sheets_go_in_chunks(self):
         book = self.workbook()
@@ -399,7 +410,7 @@ class CommandLineTest(Base):
             "GMAIL_APP_PASSWORD": "abcdefghijklmnop",
             "HUCKLEBERRY_EMAIL": "parent@example.com",
             "HUCKLEBERRY_PASSWORD": "x",
-            "DAYCARE_CHILD": "Emilia",
+            "DAYCARE_CHILD": "Josephine",
         }
         config.save(values, self.data)
         fake_in = io.TextIOWrapper(io.BytesIO(stdin), encoding="utf-8")

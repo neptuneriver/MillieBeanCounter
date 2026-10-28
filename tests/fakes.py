@@ -13,9 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-from millie_sync.config import from_values
-from millie_sync.huckleberry import EventTimeAPI
-from millie_sync.mailbox import MailHeader, _header_from_bytes
+from millie_bean_counter.config import from_values
+from millie_bean_counter.huckleberry import EventTimeAPI
+from millie_bean_counter.mailbox import MailHeader, _header_from_bytes
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -141,7 +141,7 @@ class FakeFirestore:
         self.docs[(collection, child, "intervals", uuid.uuid4().hex[:16])] = data
 
 
-def family(children=(("child-1", "Millie", "Millie"),)) -> FakeFirestore:
+def family(children=(("child-1", "Josie", "Josie"),)) -> FakeFirestore:
     store = FakeFirestore()
     store.docs[("users", "user-1")] = {
         "email": "parent@example.com",
@@ -172,11 +172,12 @@ def make_api(store: FakeFirestore, tz: str = "America/New_York") -> EventTimeAPI
 
 
 class FakeMailbox:
-    """Stands in for millie_sync.mailbox.Mailbox."""
+    """Stands in for millie_bean_counter.mailbox.Mailbox."""
 
     def __init__(self, messages: list[bytes]):
         self.messages = messages
         self.fetched: list[str] = []
+        self.since_days: list = []
 
     def __call__(self, settings):  # used as mailbox_factory
         return self
@@ -188,6 +189,11 @@ class FakeMailbox:
         return None
 
     def recent(self, today) -> list[MailHeader]:
+        headers = [_header_from_bytes(str(i + 1), raw, "INBOX") for i, raw in enumerate(self.messages)]
+        return [h for h in headers if "daily sheet" in h.subject.lower()]
+
+    def since(self, day) -> list[MailHeader]:
+        self.since_days.append(day)
         return [_header_from_bytes(str(i + 1), raw, "INBOX") for i, raw in enumerate(self.messages)]
 
     def fetch(self, uid: str) -> bytes:
@@ -209,8 +215,8 @@ def settings(tmp: Path, **overrides):
         "GMAIL_APP_PASSWORD": "abcd efgh ijkl mnop",
         "HUCKLEBERRY_EMAIL": "parent@example.com",
         "HUCKLEBERRY_PASSWORD": "not-a-real-password",
-        "HUCKLEBERRY_CHILD": "Millie",
-        "DAYCARE_CHILD": "Emilia",
+        "HUCKLEBERRY_CHILD": "Josie",
+        "DAYCARE_CHILD": "Josephine",
         "ALLOWED_SENDERS": "parent@example.com, kaymbu.com",
         "NOTIFY_EMAIL": "parent@example.com",
         "TIMEZONE": "America/New_York",
@@ -247,3 +253,225 @@ def at(text: str, tz: str = "America/New_York") -> datetime:
     from zoneinfo import ZoneInfo
 
     return datetime.fromisoformat(text).replace(tzinfo=ZoneInfo(tz))
+
+
+# ---------------------------------------------------------------------------
+# Google Drive and the picture server
+# ---------------------------------------------------------------------------
+
+
+class FakeDrive:
+    """Stands in for millie_bean_counter.gdrive.Drive: folders and files in memory."""
+
+    def __init__(self, account: str = "daycare-inbox@example.com"):
+        self.account_email = account
+        self.items: dict[str, dict] = {}  # id -> {name, parent, folder, trashed, ...}
+        self.uploads: list[dict] = []
+        self.calls: list[str] = []
+        self.fail_upload_at: int | None = None  # the Nth upload raises DriveError
+        self.lose_reply_at: int | None = None  # the Nth upload succeeds at Google, but the reply is lost
+        self.created = 0
+
+    def __call__(self, settings):  # used as drive_factory
+        return self
+
+    def _new_id(self) -> str:
+        self.created += 1
+        return f"id-{self.created}"
+
+    def account(self) -> str:
+        return self.account_email
+
+    def find_folder(self, name, parent):
+        self.calls.append(f"find_folder {name}")
+        for file_id, item in self.items.items():
+            if item["folder"] and item["name"] == name and item["parent"] == parent and not item["trashed"]:
+                return file_id
+        return None
+
+    def create_folder(self, name, parent):
+        self.calls.append(f"create_folder {name}")
+        file_id = self._new_id()
+        self.items[file_id] = {"name": name, "parent": parent, "folder": True, "trashed": False}
+        return file_id
+
+    def usable(self, file_id):
+        self.calls.append(f"usable {file_id}")
+        item = self.items.get(file_id)
+        return bool(item) and not item["trashed"]
+
+    def find_tagged(self, tag):
+        self.calls.append("find_tagged")
+        for file_id, item in self.items.items():
+            if item.get("tag") == tag and not item["trashed"]:
+                return file_id
+        return None
+
+    def upload(self, *, name, data, mime, parent, description="", modified=None, tag=""):
+        from millie_bean_counter.gdrive import DriveError
+
+        number = len(self.uploads) + 1
+        if self.fail_upload_at == number:
+            self.fail_upload_at = None
+            raise DriveError("Google Drive said HTTP 503: try later", 503)
+        file_id = self._new_id()
+        item = {
+            "name": name,
+            "parent": parent,
+            "folder": False,
+            "trashed": False,
+            "data": data,
+            "mime": mime,
+            "description": description,
+            "modified": modified,
+            "tag": tag,
+        }
+        self.items[file_id] = item
+        self.uploads.append(item)
+        if self.lose_reply_at == number:
+            self.lose_reply_at = None
+            raise DriveError("Couldn't reach Google Drive (ReadTimeout: timed out).")
+        return file_id
+
+    def path_of(self, file_id: str) -> str:
+        parts = []
+        while file_id in self.items:
+            parts.append(self.items[file_id]["name"])
+            file_id = self.items[file_id]["parent"]
+        return " > ".join(reversed(parts))
+
+    def files(self) -> list[str]:
+        return [self.path_of(i) for i, item in self.items.items() if not item["folder"] and not item["trashed"]]
+
+
+class FakePictures:
+    """Stands in for photos.Downloader: url -> (bytes, type), or an exception to raise."""
+
+    def __init__(self, pictures: dict | None = None):
+        self.pictures = dict(pictures or {})
+        self.asked: list[str] = []
+
+    def __call__(self, url: str):
+        from millie_bean_counter.photos import PhotoGone
+
+        self.asked.append(url)
+        found = self.pictures.get(url)
+        if found is None:
+            raise PhotoGone("HTTP 404")
+        if isinstance(found, Exception):
+            raise found
+        return found
+
+
+def jpeg(seed: str, size: int = 4000) -> bytes:
+    """Bytes that are different for every seed (the code never decodes them)."""
+    body = (seed.encode() * (size // max(1, len(seed)) + 1))[:size]
+    return b"\xff\xd8\xff\xe0" + body
+
+
+MOMENT_URL = "https://media.example.invalid/media/school/2026/moments/0/0/0/1/moment-0001_display.jpg"
+DOWNLOAD_LINK = "https://example.invalid/kaymbu-link/2"
+
+
+def moments_email(
+    day: str = "2026-10-14", moments: int = 1, *, message_id: str = "", sent: str = "", first: int = 1
+) -> bytes:
+    """The made-up Shared Moments email, on another day and/or with more moments.
+    Moment n has the picture moment-000n_display.jpg and the Download link kaymbu-link/download-n."""
+    import email
+    import email.policy
+    import re
+    from datetime import date as _date
+
+    raw = fixture("moments-oct-14.eml")
+    message = email.message_from_bytes(raw, policy=email.policy.default)
+    html = message.get_body(("html",)).get_content()
+    when = _date.fromisoformat(day)
+    months = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ]
+    html = html.replace("October 14, 2026", f"{months[when.month - 1]} {when.day}, {when.year}")
+    rows = re.search(r'<tbody class="moments">.*?</tbody><tbody class="download-panel">.*?</tbody>', html, re.DOTALL)[0]
+    blocks = []
+    for n in range(first, first + moments):
+        block = rows.replace("moment-0001_display.jpg", f"moment-{n:04d}_display.jpg")
+        block = block.replace(
+            'href="https://example.invalid/kaymbu-link/2"', f'href="https://example.invalid/kaymbu-link/download-{n}"'
+        )
+        blocks.append(block)
+    html = html.replace(rows, "".join(blocks))
+    message.set_content(html, subtype="html", cte="quoted-printable")
+    del message["Message-ID"]
+    message["Message-ID"] = message_id or f"<moments-{day}-{first}@example.com>"
+    del message["Date"]
+    message["Date"] = sent or f"{when:%a}, {when.day} {when:%b %Y} 19:22:08 +0000"
+    return message.as_bytes()
+
+
+def moment_url(n: int) -> str:
+    return MOMENT_URL.replace("moment-0001", f"moment-{n:04d}")
+
+
+def download_link(n: int) -> str:
+    return f"https://example.invalid/kaymbu-link/download-{n}"
+
+
+def gmail_forward(raw: bytes, *, forwarded_on: str = "Thu, 29 Oct 2026 21:05:00 -0400") -> bytes:
+    """What Gmail sends when the parent forwards an email by hand: classes renamed,
+    the original wrapped under a 'Forwarded message' block."""
+    import email
+    import email.policy
+    from email.message import EmailMessage
+
+    original = email.message_from_bytes(raw, policy=email.policy.default)
+    html = original.get_body(("html",)).get_content().replace('class="', 'class="m_-4433221100')
+    sent = original["Date"].datetime.astimezone(__import__("zoneinfo").ZoneInfo("America/New_York"))
+    clock = sent.strftime("%I:%M %p").lstrip("0")
+    header_lines = [
+        "---------- Forwarded message ---------",
+        f"From: {original['From']}",
+        f"Date: {sent:%a}, {sent:%b} {sent.day}, {sent.year} at {clock}",
+        f"Subject: {original['Subject']}",
+        "To: <parent@example.com>",
+    ]
+    forward = EmailMessage()
+    forward["From"] = "Parent Name <parent@example.com>"
+    forward["To"] = "daycare-inbox@example.com"
+    forward["Subject"] = "Fwd: " + str(original["Subject"])
+    forward["Date"] = forwarded_on
+    forward["Message-ID"] = "<forward-of-" + str(original["Message-ID"]).strip("<>") + ">"
+    forward.set_content("\n".join(header_lines) + "\n\n(see the HTML version)\n")
+    forward.add_alternative(
+        '<div dir="ltr"><div class="gmail_quote">' + "<br>".join(header_lines) + "<br><br>" + html + "</div></div>",
+        subtype="html",
+    )
+    return forward.as_bytes()
+
+
+def forward_as_attachments(*raws: bytes, message_id: str = "<bulk-forward@example.com>") -> bytes:
+    """Gmail's 'Forward as attachment' with several emails selected."""
+    import email
+    import email.policy
+    from email.message import EmailMessage
+
+    wrapper = EmailMessage()
+    wrapper["From"] = "Parent Name <parent@example.com>"
+    wrapper["To"] = "daycare-inbox@example.com"
+    wrapper["Subject"] = "Fwd: older daycare photos"
+    wrapper["Date"] = "Fri, 30 Oct 2026 08:00:00 -0400"
+    wrapper["Message-ID"] = message_id
+    wrapper.set_content("Older ones.")
+    for raw in raws:
+        wrapper.add_attachment(email.message_from_bytes(raw, policy=email.policy.default))
+    return wrapper.as_bytes()

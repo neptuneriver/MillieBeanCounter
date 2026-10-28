@@ -12,8 +12,8 @@ from pathlib import Path
 
 from fakes import fixture, settings
 
-from millie_sync import config
-from millie_sync.mailbox import Mailbox, MailError, imap_date, send_email
+from millie_bean_counter import config
+from millie_bean_counter.mailbox import Mailbox, MailError, imap_date, send_email
 
 
 class SettingsTest(unittest.TestCase):
@@ -68,9 +68,36 @@ class SettingsTest(unittest.TestCase):
         self.assertFalse(s.sender_allowed("stranger@example.com"))
         self.assertFalse(s.sender_allowed("x@notkaymbu.com"))
         self.assertTrue(settings(self.data, ALLOWED_SENDERS="").sender_allowed("anyone@example.com"))
-        self.assertTrue(s.daycare_child_matches("Emilia"))
-        self.assertTrue(s.daycare_child_matches("emilia Example"))
-        self.assertFalse(s.daycare_child_matches("Emily"))
+        self.assertTrue(s.daycare_child_matches("Josephine"))
+        self.assertTrue(s.daycare_child_matches("josephine Example"))
+        self.assertFalse(s.daycare_child_matches("Josie"))
+
+    def test_birthday_typed_either_way_and_saved_as_a_date(self):
+        today = date(2026, 10, 27)
+        self.assertEqual(config.parse_birthday("6/3/2026", today), date(2026, 6, 3))
+        self.assertEqual(config.parse_birthday(" 06/03/2026 ", today), date(2026, 6, 3))
+        self.assertEqual(config.parse_birthday("2026-06-03", today), date(2026, 6, 3))
+        for wrong in ("2/30/2026", "29/7/2026", "July 29", "", "12/1/2026"):
+            with self.assertRaises(config.ConfigError):
+                config.parse_birthday(wrong, today)
+        saved = config.save({"CHILD_BIRTHDAY": "6/3/2026", "CHILD_NAME": " Josie "}, self.data)
+        self.assertEqual((saved["CHILD_BIRTHDAY"], saved["CHILD_NAME"]), ("2026-06-03", "Josie"))
+        with self.assertRaises(config.ConfigError) as caught:
+            config.save({"CHILD_BIRTHDAY": "2/30/2026"}, self.data)
+        self.assertIn("isn't a real date", str(caught.exception))
+
+    def test_child_name_and_photo_settings(self):
+        s = settings(self.data)
+        self.assertEqual((s.child_name, s.child_birthday, s.drive_photos), ("Josie", None, False))
+        self.assertEqual(s.drive_folder, "Josie Daycare Photos")  # older settings: the Huckleberry name
+        s = settings(self.data, CHILD_NAME="Jo", CHILD_BIRTHDAY="2026-06-03", DRIVE_PHOTOS="yes")
+        self.assertEqual((s.child_name, s.child_birthday, s.drive_photos), ("Jo", date(2026, 6, 3), True))
+        self.assertEqual(s.drive_folder, "Jo Daycare Photos")
+        self.assertEqual(settings(self.data, DRIVE_FOLDER="Our Photos").drive_folder, "Our Photos")
+        with self.assertRaises(config.ConfigError):
+            settings(self.data, DRIVE_FOLDER="Family/Photos")
+        with self.assertRaises(config.ConfigError):
+            settings(self.data, CHILD_BIRTHDAY="someday")
 
 
 class FakeIMAP:

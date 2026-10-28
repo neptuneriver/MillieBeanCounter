@@ -1,4 +1,4 @@
-"""The daily-sheet parser, on the real (sanitized) email and on variations."""
+"""The daily-sheet parser, on a made-up sheet in Kaymbu's real email format, and on variations."""
 
 from __future__ import annotations
 
@@ -8,20 +8,20 @@ from zoneinfo import ZoneInfo
 
 from fakes import fixture
 
-from millie_sync.sheet import clock_text, email_bodies, parse_email, parse_lines, text_to_lines
+from millie_bean_counter.sheet import clock_text, email_bodies, parse_email, parse_lines, text_to_lines
 
 TZ = ZoneInfo("America/New_York")
 
 OCT_12 = [
-    ("11:36 AM", "diaper", "both"),
-    ("12:23 PM", "nap", "12:55 PM"),
-    ("1:00 PM", "bottle", 5.0),
-    ("1:54 PM", "diaper", "both"),
-    ("2:40 PM", "nap", "3:26 PM"),
-    ("3:30 PM", "bottle", 4.0),
-    ("3:45 PM", "diaper", "pee"),
-    ("4:28 PM", "diaper", "pee"),
-    ("4:35 PM", "nap", "5:24 PM"),
+    ("9:10 AM", "diaper", "pee"),
+    ("9:40 AM", "nap", "10:15 AM"),
+    ("10:30 AM", "bottle", 4.0),
+    ("11:50 AM", "diaper", "both"),
+    ("12:10 PM", "nap", "12:58 PM"),
+    ("1:35 PM", "diaper", "pee"),
+    ("2:15 PM", "bottle", 3.5),
+    ("2:45 PM", "nap", "3:25 PM"),
+    ("3:40 PM", "diaper", "poo"),
 ]
 
 
@@ -38,10 +38,10 @@ def sheet_from(body: str):
     return result
 
 
-HEAD = "Emilia's Daily Sheet\n\nMonday, October 12th, 2026\n\nACTIVITIES\n"
+HEAD = "Josephine's Daily Sheet\n\nMonday, October 12th, 2026\n\nACTIVITIES\n"
 
 
-class RealEmailTest(unittest.TestCase):
+class KaymbuEmailTest(unittest.TestCase):
     def test_forwarded_email_both_bodies_agree(self):
         raw = fixture("forwarded-oct-12.eml")
         bodies = email_bodies(raw)
@@ -50,7 +50,7 @@ class RealEmailTest(unittest.TestCase):
             result = parse_lines(lines, TZ)
             self.assertEqual(len(result.sheets), 1, kind)
             sheet = result.sheets[0]
-            self.assertEqual((sheet.child, sheet.day), ("Emilia", date(2026, 10, 12)))
+            self.assertEqual((sheet.child, sheet.day), ("Josephine", date(2026, 10, 12)))
             self.assertEqual(summary(sheet), OCT_12, kind)
             self.assertEqual(sheet.problems, [])
 
@@ -64,10 +64,10 @@ class RealEmailTest(unittest.TestCase):
         bottles = [e for e in sheet.events if e.kind == "bottle"]
         self.assertEqual(
             [(b.amount, b.offered, b.units, b.milk) for b in bottles],
-            [(5.0, 5.25, "oz", "Breast Milk"), (4.0, 5.25, "oz", "Breast Milk")],
+            [(4.0, 4.5, "oz", "Breast Milk"), (3.5, 4.5, "oz", "Breast Milk")],
         )
         self.assertIsNone(bottles[0].comment)
-        self.assertEqual(bottles[1].comment, "And Mrs T.")
+        self.assertEqual(bottles[1].comment, "Took a little break halfway through.")
         self.assertEqual(sheet.comments, [])
 
     def test_original_kaymbu_email(self):
@@ -109,7 +109,7 @@ class VariationsTest(unittest.TestCase):
         self.assertEqual([e.minutes for e in sheet.events], [65, 60])
 
     def test_nap_whose_numbers_disagree_is_not_logged(self):
-        sheet = self.one("Nap\nNapped from 12:23pm to 12:55pm (45 minutes)\n")
+        sheet = self.one("Nap\nNapped from 12:10pm to 12:58pm (30 minutes)\n")
         self.assertEqual(sheet.events, [])
         self.assertEqual(len(sheet.problems), 1)
 
@@ -141,41 +141,41 @@ class VariationsTest(unittest.TestCase):
         sheet = self.one(
             "Bottle\nOffered 5 ounces of breastmilk and took 5 ounces at 1:00pm\n"
             "Meal\nAte all of her sweet potatoes at 11:30am\nMood\nHappy\n"
-            "Diaper\nWet diaper at 3:45pm\n"
+            "Diaper\nWet diaper at 1:35pm\n"
         )
         self.assertEqual([e.kind for e in sheet.events], ["bottle", "diaper"])
         self.assertEqual(sheet.problems, [])
         self.assertIsNone(sheet.events[0].comment)
 
     def test_duplicate_lines_are_logged_once(self):
-        sheet = self.one("Diaper\nWet diaper at 3:45pm\nWet diaper at 3:45pm\n")
+        sheet = self.one("Diaper\nWet diaper at 1:35pm\nWet diaper at 1:35pm\n")
         self.assertEqual(len(sheet.events), 1)
         self.assertIn("Listed twice", sheet.notes[0])
 
     def test_comment_for_a_nap_has_nowhere_to_go_but_is_kept(self):
-        sheet = self.one("Nap\nNapped from 12:23pm to 12:55pm (32 minutes)\nSlept great today!\n")
+        sheet = self.one("Nap\nNapped from 12:10pm to 12:58pm (48 minutes)\nSlept great today!\n")
         self.assertEqual(sheet.events[0].comment, "Slept great today!")
 
     def test_wrong_weekday_stops_the_sheet(self):
-        result = sheet_from("Emilia's Daily Sheet\nTuesday, October 12th, 2026\nDiaper\nWet diaper at 3:45pm\n")
+        result = sheet_from("Josephine's Daily Sheet\nTuesday, October 12th, 2026\nDiaper\nWet diaper at 1:35pm\n")
         self.assertEqual(result.sheets, [])
         self.assertIn("wrong weekday", result.errors[0])
 
     def test_missing_date_stops_the_sheet(self):
-        result = sheet_from("Emilia's Daily Sheet\nDiaper\nWet diaper at 3:45pm\n")
+        result = sheet_from("Josephine's Daily Sheet\nDiaper\nWet diaper at 1:35pm\n")
         self.assertEqual(result.sheets, [])
         self.assertIn("no date line", result.errors[0])
 
     def test_two_sheets_in_one_email(self):
         result = sheet_from(
-            HEAD + "Diaper\nWet diaper at 3:45pm\n"
-            "Emilia's Daily Sheet\nTuesday, October 13th, 2026\nDiaper\nBM diaper at 9:00am\n"
+            HEAD + "Diaper\nWet diaper at 1:35pm\n"
+            "Josephine's Daily Sheet\nTuesday, October 13th, 2026\nDiaper\nBM diaper at 9:00am\n"
         )
         self.assertEqual([(s.day.day, s.events[0].diaper) for s in result.sheets], [(12, "pee"), (13, "poo")])
 
     def test_signature_and_links_are_not_read(self):
         sheet = self.one(
-            "Nap\nNapped from 4:35pm to 5:24pm (49 minutes)\n<https://example.invalid/x>\n--\n"
+            "Nap\nNapped from 2:45pm to 3:25pm (40 minutes)\n<https://example.invalid/x>\n--\n"
             "Parent Name\nWet diaper at 9:00pm\n"
         )
         self.assertEqual([e.kind for e in sheet.events], ["nap"])

@@ -1,81 +1,100 @@
-# Millie daycare sync
+# MillieBeanCounter: your copy
 
-Every 15 minutes this checks millie.agentic.ai@gmail.com for Goddard "Daily Sheet"
-emails, reads the bottles, naps and diapers, and adds them to Millie in Huckleberry.
-After each sheet it emails you a short summary.
+*Your own guide, with your accounts in it. Like My Setup.command, it stays off GitHub.
+README.md is the public version for everyone else.*
 
-It also keeps a full copy of everything in Huckleberry (yours and the agent's
-entries, every tracker) as an Excel workbook, CSV files for pandas, a SQLite
-database for SQL, and optionally a Google Sheet. Every entry gets a permanent audit
-key like `102226AD1`.
+Every 15 minutes this checks millie.agentic.ai@gmail.com for Goddard's Kaymbu emails:
 
-It replaces the Android-emulator version. There's no emulator, ADB or screen reading
-any more. Entries go straight into Huckleberry through
-[py-huckleberry-api](https://github.com/Woyken/py-huckleberry-api), an unofficial,
-reverse-engineered client.
+* **Daily sheets:** the bottles, naps and diapers go into Millie in Huckleberry, and you
+  get a short summary email.
+* **Shared Moments:** the photos go into the Millie Google Drive, a folder per month,
+  named like `October 2026/10/27 Millie 2m 28d Photo 1.jpg`.
 
-## One-time setup (about 10 minutes, plus 10 for the optional Google Sheet)
+It also keeps a full copy of everything in Huckleberry (yours, Tina's and the sync's
+entries, every tracker) as an Excel workbook, CSV files for pandas, a SQLite database
+for SQL, and optionally a Google Sheet. Every entry gets a permanent audit key like
+`102226SD1`.
 
-### 1. Make an app password for the Millie Gmail inbox
+## Upgrading from millie-sync (do this once)
 
-1. In a browser, sign in to **millie.agentic.ai@gmail.com**.
-2. Turn on 2-Step Verification at <https://myaccount.google.com/security>
-   (Google requires it before it allows app passwords).
-3. Go to <https://myaccount.google.com/apppasswords>, type a name like `Millie sync`,
-   click **Create**, and keep the 16-letter password handy for step 4.
+This version is renamed from millie-sync to MillieBeanCounter. Your settings, history
+and audit keys carry over. Only the sync's key letter changes, from A to S
+(`101226AD1` becomes `101226SD1`).
 
-### 2. Optional: auto-forward the daily sheets
+### 1. Forward the photo emails too (2 minutes)
 
-Forwarding by hand works fine. To make it hands-off, do this in **your own** Gmail
-(the one Goddard emails), in a computer browser:
+Your Gmail filter only forwards emails with "Daily Sheet" in the subject, so the
+"Shared Moments" photo emails never reach the Millie inbox. In **your own** Gmail, in a
+computer browser:
 
-1. Gear icon > **See all settings** > **Forwarding and POP/IMAP** >
-   **Add a forwarding address** > `millie.agentic.ai@gmail.com`.
-2. Google sends a confirmation to the Millie inbox. Open it there and confirm.
-3. Back in your Gmail, leave "Disable forwarding" selected (that setting would forward
-   *everything*). Instead, open the search options (the sliders icon in the search bar),
-   put `kaymbu.com` in **From** and `Daily Sheet` in **Subject**, click
-   **Create filter**, tick **Forward it to**, pick the Millie address, and save.
+1. Gear icon > **See all settings** > **Filters and Blocked Addresses**.
+2. Find the filter for `from:(kaymbu.com) subject:(Daily Sheet)` and click **edit**.
+3. Empty the **Subject** box, click **Continue**, keep **Forward it to**
+   millie.agentic.ai@gmail.com ticked, and click **Update filter**.
 
-### 3. Optional: a Google Sheet copy of the data
+### 2. Set up Google Drive for the photos (about 10 minutes)
 
-Skip this if the files on your Mac are enough; you can add it later by running
-Setup.command again. Everything here happens in the **Millie** Google account.
+Do all of this signed in as **millie.agentic.ai@gmail.com**, so the photos land in the
+Millie Drive. You can share the folder with yourself and Tina afterwards.
 
-1. Go to <https://console.cloud.google.com>, create a project (any name, e.g.
-   `Millie sync`). No billing is needed.
-2. **APIs & Services > Library**, search for **Google Sheets API**, click **Enable**.
-3. **IAM & Admin > Service Accounts > Create service account**. Name it
-   `millie-sheets`, click **Done** (no roles needed). Copy its email address; it ends
-   in `.iam.gserviceaccount.com`.
-4. Click the new account > **Keys > Add key > Create new key > JSON**. A `.json` file
-   downloads. Keep it private; it's the robot's password.
-5. In Google Sheets, create a blank spreadsheet called `Millie data`. Click **Share**,
-   paste the service account's email, choose **Editor**, and share.
-6. Also share the sheet with your own Gmail (and Tina's) to see it on your phones.
+1. Go to <https://console.cloud.google.com>. If you made a project for the Google Sheet
+   copy, pick it from the project list at the top. Otherwise create one (any name, for
+   example `MillieBeanCounter`). No billing is needed.
+2. **APIs & Services > Library**, search for **Google Drive API**, click **Enable**.
+3. Open **Google Auth Platform** (also listed as **APIs & Services > OAuth consent
+   screen**) and click **Get started**. App name `MillieBeanCounter`, the Millie email
+   as the support email, **Audience: External**, the Millie email as the contact, agree,
+   **Create**. Then **Data Access > Add or remove scopes**, search for `drive.file`, tick
+   `.../auth/drive.file`, click **Update**, then **Save**.
+4. **Audience > Publish app > Confirm.** Left in "Testing", Google would sign the app
+   out of Drive every 7 days. It only asks for the narrowest Drive permission, so
+   publishing needs no review from Google.
+5. **Clients > Create client**, type **Desktop app**, name `MillieBeanCounter`,
+   **Create**, then **Download JSON**. Keep the file in Downloads for the next step.
 
-If Google says key creation is blocked by an organization policy, you're signed in to a
-work or school account rather than the Millie Gmail account.
+### 3. Run My Setup.command in the new folder
 
-### 4. Run Setup.command
+1. Unzip the new version somewhere (it can replace the old folder; see "GitHub" below
+   for your repository copy). Open Docker Desktop and wait until it's running.
+2. Double-click **My Setup.command**. It stops the old millie-sync container, copies
+   your settings and history across, and builds the new version.
+3. Press Return to keep each saved answer. The new questions:
+   * **Name, as you'd like it in photo names:** Millie.
+   * **Birthday:** it suggests 7/29/2026 (from your "10/27 Millie 2m 28d" example).
+     Fix it at the prompt if that's off.
+   * **Save the daycare's photos to Google Drive?** yes. **Folder:** Millie Daycare
+     Photos (or whatever you like).
+   * **Drag in the OAuth client file:** the `.json` from step 2.5.
+4. Your browser opens to Google. Pick **millie.agentic.ai@gmail.com** and allow access
+   to "only the specific Google Drive files you use with this app". If Google shows
+   "Google hasn't verified this app", click **Advanced**, then **Go to
+   MillieBeanCounter**. It's your own app. The Terminal then says
+   "✓ Google Drive: signed in as millie.agentic.ai@gmail.com".
+5. It checks every connection and shows what it would do. Choose **Y**.
 
-1. Open Docker Desktop and wait for it to say the engine is running.
-2. Double-click **Setup.command**. If macOS refuses to open it, right-click it, choose
-   **Open**, then **Open** again. (Or open Terminal, type `bash `, drag the file into the
-   window and press Return.)
-3. It builds the Docker image (a few minutes the first time), then asks for:
-   * the Millie Gmail address and the app password from step 1
-   * the email and password you use to sign in to Huckleberry
-   * Millie's name in Huckleberry and on the daycare sheet ("Emilia")
-   * who's allowed to send sheets (your address, plus kaymbu.com for auto-forwarding)
-   * where to email summaries
-   * the Google Sheet link and the `.json` key from step 3 (drag the file into the
-     window), or `none`
-4. It tests every connection, sends you a test email, and shows exactly what it would
-   add right now (nothing is written yet). Then you choose: start and add those, start
-   but skip them, or don't start.
+In Docker Desktop you'll see the old stopped millie-sync container and its volume
+`millie-sync-data`. After a week or so of everything working, you can delete both there.
 
-Passwords and the key are stored only inside Docker, never in this folder.
+### 4. Send the older photos (optional)
+
+The photo emails from before today are in your own inbox, not Millie's. To file them
+too, in your Gmail on a computer: search `from:kaymbu.com -"Daily Sheet"`, select the
+emails (the checkbox at the top selects a whole page), click **More** (the three dots)
+> **Forward as attachment**, and send it to millie.agentic.ai@gmail.com. Each attached
+email is saved on its own date, and anything already saved is skipped.
+
+### 5. GitHub
+
+1. On github.com, open the repository > **Settings** and rename it to
+   `MillieBeanCounter`. GitHub keeps the old address working.
+2. In GitHub Desktop, **Repository > Show in Finder**. In that Finder window press
+   **Command-Shift-.** (period) to show hidden files.
+3. Delete everything in the folder **except** `.git`. Then copy everything from the
+   new unzipped folder in, including `.gitignore` and `.dockerignore` (hidden files
+   show as grey once Command-Shift-. is on). Press Command-Shift-. again to hide them.
+4. Back in GitHub Desktop the changes show up: the `millie_sync` folder gone,
+   `millie_bean_counter` added, and so on. `My Setup.command` and `START_HERE.md`
+   don't appear, because `.gitignore` keeps them out. Commit, then **Push origin**.
 
 ## Everyday use
 
@@ -85,13 +104,40 @@ has been asleep (it looks back 7 days). In Docker Desktop, Settings > General >
 
 | Double-click | What it does |
 | --- | --- |
-| Status.command | What it has done lately, and any problem |
-| Get Data.command | Fresh export of everything into Documents/Millie Data (opens the folder) |
+| Status.command | What it has done lately (sheets and photos), and any problem |
+| Get Data.command | Fresh export of everything into Documents/MillieBeanCounter Data (opens the folder) |
 | Verify.command | Checks the export against the CSV Huckleberry emails you |
 | Run Now.command | Check Gmail right now instead of waiting |
-| Preview.command | Show what it would add right now, without writing anything |
+| Preview.command | Show what it would do right now, without writing anything |
 | Stop.command / Start.command | Pause / resume (nothing is lost) |
-| Setup.command | Change settings, or install an updated version of this folder |
+| My Setup.command | Change settings, or install an updated version of this folder |
+
+There are two setup files. **My Setup.command** is yours: it asks the same questions as
+Setup.command but suggests your answers (the Millie Gmail, your email, Millie, Emilia,
+Eastern time, photos on). **Setup.command** suggests nothing, so anyone who downloads
+this from GitHub can enter their own accounts. Only Setup.command goes to GitHub.
+
+## The photos
+
+```
+Millie Daycare Photos/
+  October 2026/
+    10/27 Millie 2m 28d Photo 1.jpg
+    10/27 Millie 2m 28d Photo 2.jpg
+    10/28 Millie 2m 29d Photo 1.jpg
+```
+
+* The date is the one printed in the email. The age is months and days on that date.
+  The number counts up through the day, across all of that day's emails.
+* Each moment's **Download** link is tried first, for the full-size picture. If it
+  doesn't lead straight to a picture, the copy shown in the email is saved instead.
+  The log (Status.command) says "full size" or "email size" after each one.
+* Nothing is saved twice, even if a moment is shared again or forwarded again.
+* Each file's description names the email it came from, and its "modified" time is
+  when the daycare sent it.
+* The app can only see what it created in that Drive. You can move the folder, rename
+  it, or share it with Tina; it keeps working. If you delete it, a new one is made for
+  the next photos.
 
 ## The summary email
 
@@ -102,15 +148,15 @@ From "Fwd: Emilia's Daily Sheet for Monday, October 12th".
 
 Emilia, Monday, October 12, 2026
  Added to Huckleberry (audit key in brackets):
-  11:36 AM  Diaper  wet + BM                               [101226AD1]
-  12:23 PM  Nap     until 12:55 PM (32 min)                [101226AN1]
-   1:00 PM  Bottle  5 oz breast milk (offered 5.25 oz)     [101226AB1]
-   1:54 PM  Diaper  wet + BM                               [101226AD2]
-   2:40 PM  Nap     until 3:26 PM (46 min)                 [101226AN2]
-   3:30 PM  Bottle  4 oz breast milk (offered 5.25 oz)     [101226AB2]
-   3:45 PM  Diaper  wet                                    [101226AD3]
-   4:28 PM  Diaper  wet                                    [101226AD4]
-   4:35 PM  Nap     until 5:24 PM (49 min)                 [101226AN3]
+  11:36 AM  Diaper  wet + BM                               [101226SD1]
+  12:23 PM  Nap     until 12:55 PM (32 min)                [101226SN1]
+   1:00 PM  Bottle  5 oz breast milk (offered 5.25 oz)     [101226SB1]
+   1:54 PM  Diaper  wet + BM                               [101226SD2]
+   2:40 PM  Nap     until 3:26 PM (46 min)                 [101226SN2]
+   3:30 PM  Bottle  4 oz breast milk (offered 5.25 oz)     [101226SB2]
+   3:45 PM  Diaper  wet                                    [101226SD3]
+   4:28 PM  Diaper  wet                                    [101226SD4]
+   4:35 PM  Nap     until 5:24 PM (49 min)                 [101226SN3]
  Teacher comments:
   - 3:30 PM bottle: And Mrs T.
  Day totals from the sheet:
@@ -124,34 +170,37 @@ entered the diapers and bottles by hand, it adds just the three naps.)
 
 If something on a sheet couldn't be read with certainty, it's listed under
 "Needs a look (not added)" so you can add it by hand. If the sync hits a problem
-(a password stopped working, say), you get one email about it per day.
+(a password stopped working, say), you get one email about it per day. Photos don't
+send summary emails; Status.command lists the latest ones.
 
 ## Your data
 
 The export holds **everything in Huckleberry**: entries you and Tina make in the app
-and the ones the agent adds, for every tracker. It's refreshed after each daycare
+and the ones the sync adds, for every tracker. It's refreshed after each daycare
 import and at least once a day, and whenever you run Get Data.command.
-
-**Sheets** (the same in the Excel workbook, the Google Sheet, the CSVs and SQLite):
 
 | Sheet | What's in it |
 | --- | --- |
 | All entries | The master list: one row per entry, every kind, with key, source, times, amount (and amount in ml), details and notes |
-| Agent diapers / Agent naps / Agent bottles | Everything the agent added: the daycare email it came from, when it was added, the teacher's comment, and whether it's still in Huckleberry |
+| Daycare diapers / Daycare naps / Daycare bottles | Everything the sync added from daycare sheets: the email it came from, when it was added, the teacher's comment, and whether it's still in Huckleberry |
 | Diapers, Sleep, Bottles, Breastfeeding, Pumping, Medicine, Solids, Temperature, Growth, Activities, Potty | One sheet per kind, with that kind's own columns (pee/poo sizes, left/right minutes, pumped amounts, medicine names...) |
 | Daily totals | Per day: bottles and ml, breastfeeds and minutes, wet and dirty diapers, sleep minutes, pumps and ml, medicine doses |
 | Legend | What every key letter and column means |
 
-**Audit keys**: `MMDDYY` + who + what + number. `102226AD1` is the first diaper the
-**A**gent logged for October 22, 2026; entries made in the app get **U** instead
+The "Agent" tabs in your Google Sheet are replaced by the "Daycare" ones at the next
+refresh.
+
+**Audit keys**: `MMDDYY` + who + what + number. `102226SD1` is the first diaper the
+**S**ync logged for October 22, 2026; entries made in the app get **U** instead
 (`101226UB2` = the second bottle you entered for October 12). Type letters: D diaper,
 N nap/sleep, B bottle, F breastfeeding, P pumping, M medicine, S solids, T temperature,
 G growth, A activity, O potty. A key never changes once given; an entry added later for
 an earlier day gets the next free number.
 
-**On your Mac**: Get Data.command writes `Documents/Millie Data` with
+**On your Mac**: Get Data.command writes `Documents/MillieBeanCounter Data` with
 `millie_data.xlsx`, a `csv` folder (one file per sheet), `millie.db` (SQLite) and
-`huckleberry_format.csv`. For example:
+`huckleberry_format.csv`. (Earlier exports stay in `Documents/Millie Data` until you
+delete them.)
 
 ```python
 import pandas as pd
@@ -167,121 +216,73 @@ FROM daily_totals ORDER BY date DESC LIMIT 14;
 ```
 
 **Checking it against Huckleberry**: in the Huckleberry app, request the data export
-email, save the CSV, then double-click **Verify.command** and drag the CSV in. It lines
-up every entry by type and time and reports anything that differs (the full list goes
-to `verify_report.txt`). `huckleberry_format.csv` is this export laid out exactly like
-Huckleberry's file, so you can also compare them yourself.
+email, save the CSV, then double-click **Verify.command** and drag the CSV in.
 
 ## What it reads from the daily sheet
 
 * **Bottles**: "Offered 5.25 ounces of breastmilk and took 5 ounces at 1:00pm" becomes a
-  5 oz breast milk bottle at 1:00 PM. The amount she *took* is what's logged. Formula
-  works the same way. A bottle she didn't drink from isn't logged.
+  5 oz breast milk bottle at 1:00 PM. The amount she *took* is what's logged.
 * **Diapers**: Wet = pee, BM = poo, BM/Wet = both, Dry = dry.
 * **Naps**: logged as sleep with the exact start and end.
-* Check-in/out, meals and anything else on the sheet are left out.
-* The date comes from the sheet itself, not from when it was emailed or forwarded.
-* Diapers get the note "From daycare" (plus any teacher comment) so you can tell them
-  apart in Huckleberry. Bottles get it too once py-huckleberry-api 0.4.9 is installed
-  (see below); until then bottles have no note.
+* Check-in/out, meals and anything else on the sheet are left out. The date comes from
+  the sheet itself, not from when it was emailed or forwarded.
+* Diapers get the note "From daycare" (plus any teacher comment). Bottles get it too
+  once py-huckleberry-api 0.4.9 is installed.
 
-It never guesses. A line in a format it hasn't seen is reported, not logged.
-
-## How it avoids duplicates
-
-* It remembers every email and entry it has handled.
-* Before adding anything it looks at what Huckleberry already has. A diaper or bottle
-  within 15 minutes of the sheet's time, or a nap that overlaps, counts as already
-  there and is left alone. Each existing entry can only stand in for one daycare entry,
-  so one hand-entered diaper can't hide two daycare diapers. (Your October 12 entries
-  were 0 to 10 minutes off the sheet's times; all six are recognised.)
-* It never edits or deletes anything in Huckleberry. If daycare re-sends a corrected
-  sheet, or what you entered by hand disagrees with the sheet (wet vs BM, 4 oz vs 5 oz),
-  the summary says so and you decide.
+It never guesses, never edits or deletes anything in Huckleberry, and skips anything
+already there (a diaper or bottle within 15 minutes, or a nap that overlaps).
 
 ## Huckleberry login
 
-The sync signs in with the email and password you use in the Huckleberry app
-(Huckleberry shares a child between caregivers by everyone signing in to the same
-account). If you sign in with Google or Apple instead, there's no password for it to
-use; you could try "Forgot password" on Huckleberry's email sign-in screen to set one,
-but that isn't guaranteed to work for those accounts.
-
-Because the Huckleberry connection is unofficial, an app update on their side could
-break it. You'd get a problem email. The usual fix is a newer py-huckleberry-api:
-change the version in `requirements.txt` and run Setup.command again.
-
-Note: py-huckleberry-api 0.4.8 is the newest on PyPI today. Version 0.4.9 (already on
-GitHub) also saves the "offered 5.25 oz" note on bottles. When it shows up on PyPI,
-change `requirements.txt` to `huckleberry-api==0.4.9` and run Setup.command.
+The sync signs in with the email and password you use in the Huckleberry app. Because
+the connection is unofficial, an app update on their side could break it; you'd get a
+problem email, and the usual fix is a newer py-huckleberry-api in `requirements.txt`
+followed by My Setup.command. When 0.4.9 shows up on PyPI, changing `requirements.txt`
+to `huckleberry-api==0.4.9` adds the "offered 5.25 oz" note to bottles.
 
 ## Privacy
 
 * Gmail is opened read-only. Nothing is marked read, moved or deleted.
-* Settings, passwords, the Google key and the journal live in the Docker volume
-  `millie-sync-data`, not in this folder. Your data goes to `Documents/Millie Data`
-  and the Google Sheet, not here.
-* Before putting this folder on GitHub: `Setup.command` suggests your Gmail address as
-  a default answer, and `tests/fixtures` holds the October 12 sheet with the teacher's
-  name and email addresses removed but Emilia's first name and that day's entries
-  still in it. Swap those for placeholders, or keep the repository private.
-* Summary emails are sent from the Millie Gmail account to the address you chose.
+* Settings, passwords, the Google keys and sign-in, and the journal live in the Docker
+  volume `millie_bean_counter_data`, not in this folder.
+* Google Drive access is limited to what the app itself creates. You can remove it any
+  time at <https://myaccount.google.com/permissions> (signed in as the Millie account).
+* Putting this folder on GitHub: this guide and `My Setup.command` mention your
+  accounts and family, so `.gitignore` keeps both out when you use git or GitHub
+  Desktop. If you upload files on the GitHub website instead, leave those two out
+  yourself. Everything else is safe to publish: the tests use made-up emails (a child
+  called Josephine, "Josie" in Huckleberry), and setup asks every user for their own
+  child's name and birthday. The one personal thing left is the project's name.
 
 ## If something seems off
 
 * **Nothing showed up for a day:** run Status.command. If it says there were no
-  daily-sheet emails, look in the Millie inbox (including Spam) to see whether the sheet
-  arrived. If it's in Spam, mark it "Not spam". Then Run Now.command.
-* **"Gmail didn't accept the login":** the app password was mistyped, or the Millie
-  account's password was changed (which cancels app passwords). Make a new app password
-  and run Setup.command again.
-* **"Huckleberry didn't accept that email and password":** see "Huckleberry login" above.
+  daily-sheet emails, look in the Millie inbox (including Spam). If it's in Spam, mark
+  it "Not spam". Then Run Now.command.
+* **No photos:** check that the photo emails reach the Millie inbox (step 1 of the
+  upgrade) and that Status.command shows no Google Drive problem.
+* **"Google Drive's sign-in has expired or was removed":** run My Setup.command and sign
+  in again. If it happens about a week after each sign-in, the app is still in Testing:
+  publish it (upgrade step 2.4).
+* **"Gmail didn't accept the login":** make a new app password for the Millie account
+  and run My Setup.command again.
 * **"The Google Sheet isn't shared with ...":** share the sheet with that address as an
-  Editor. **"Google Sheets API is turned off":** redo step 3.2.
+  Editor.
 * **A line "needs a look":** daycare used wording the sync hasn't seen. Add that entry
   by hand. If it keeps happening, the sync can be taught the new wording.
 
-## Advanced
-
-Extra settings (Terminal, from this folder):
-
-```bash
-docker compose run --rm -T sync save-settings <<< "POLL_MINUTES=30"
-```
-
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| POLL_MINUTES | 15 | How often to check Gmail |
-| LOOKBACK_DAYS | 7 | How far back in Gmail to look |
-| IMPORT_SINCE | (blank) | Ignore sheets dated before this day, e.g. 2026-10-20 |
-| EXPORT_EVERY_HOURS | 24 | Refresh the data export at least this often |
-| TIMEZONE | America/New_York | Time zone of the daycare times |
-| IMAP_FOLDER | INBOX | Gmail folder to read |
-
-Other commands: `docker compose run --rm -T sync check` (test the connections),
-`... sync export` (refresh the export and the Google Sheet), `... sync parse sheet.eml`
-(read a saved email without logging in), and `docker compose logs -f sync` (live log).
-
-## The old emulator version
-
-Setup.command stops the old container for you. Once you're happy with this one, the
-Android emulator isn't needed for this any more, and the old data can be removed with
-`docker volume rm millie-daycare-data`.
-
 ## What has been tested
 
-* A copy of the real October 12 email (personal details removed) reads as the nine
-  entries above, from both the HTML and plain-text versions of the email, and also as
-  Kaymbu's original email (what auto-forwarding delivers).
-* Your real Huckleberry export (1,220 entries since July 29) was rebuilt as a stand-in
-  Huckleberry database and exported again: all 1,220 entries came back exactly as in
-  Huckleberry's own file, field by field. With your October 12 hand entries in place,
-  the daycare sheet adds only the three naps.
-* The real py-huckleberry-api code (0.4.8 and 0.4.9) was run against a stand-in
-  database to check exactly what gets written: times, EDT/EST offsets, amounts, diaper
-  types, nap lengths and notes. Duplicate handling, retries after a failed write,
-  preview mode, daylight-saving changes, audit keys, every export format and the Google
-  Sheet requests are covered too. The tests run again inside every Docker build.
+* The photo saver was built from your real "Shared Moments" email of October 27. The
+  tests use a made-up copy with Kaymbu's exact layout (every account, school and link
+  detail replaced), plus the same email as Gmail forwards it and as "Forward as
+  attachment" sends it. They check the names (your example comes out exactly as
+  "10/27 Millie 2m 28d Photo 1" with a 7/29/2026 birthday), folders, numbering,
+  duplicates, dead links, interrupted uploads and the Google sign-in.
+* Your real October 12 daily sheet and your real Huckleberry export (1,220 entries)
+  were checked in earlier versions; those tests still pass, now with S keys.
 * Not tested before handing over: the live Gmail, Huckleberry and Google logins (they
-  need your passwords) and the Docker build on your Mac. Setup.command checks every
-  connection first and stops with a plain explanation if one fails.
+  need your passwords), Google's real responses, the Download links (Kaymbu's servers
+  aren't reachable from where this was built) and the Docker build on your Mac.
+  My Setup.command checks every connection first and stops with a plain explanation if
+  one fails.

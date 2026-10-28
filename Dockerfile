@@ -1,4 +1,4 @@
-# Millie daycare sync: Goddard/Kaymbu daily sheets in Gmail -> Huckleberry.
+# MillieBeanCounter: Goddard/Kaymbu daycare emails in Gmail -> Huckleberry and Google Drive.
 # No Android emulator, ADB or OCR: entries go straight in through py-huckleberry-api.
 FROM python:3.14-slim
 
@@ -21,7 +21,7 @@ WORKDIR /app
 COPY requirements.txt constraints.txt ./
 RUN pip install --only-binary=:all: -r requirements.txt -c constraints.txt
 
-COPY millie_sync ./millie_sync
+COPY millie_bean_counter ./millie_bean_counter
 COPY tests ./tests
 
 USER millie
@@ -29,5 +29,5 @@ USER millie
 # sheet and push it through the real Huckleberry library into a fake database.
 RUN python -m unittest discover -s tests
 
-ENTRYPOINT ["python", "-m", "millie_sync"]
+ENTRYPOINT ["python", "-m", "millie_bean_counter"]
 CMD ["serve"]

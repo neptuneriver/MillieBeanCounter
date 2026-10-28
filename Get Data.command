@@ -1,10 +1,10 @@
 #!/bin/bash
-# Export everything in Huckleberry into Documents/Millie Data on this Mac:
+# Export everything in Huckleberry into Documents/MillieBeanCounter Data on this Mac:
 # an Excel workbook, one CSV per sheet (pandas), a SQLite database (SQL), and
 # the entries in Huckleberry's own CSV layout. Also refreshes the Google Sheet.
 source "$(dirname "$0")/scripts/common.sh"
 need_docker
-DEST="$HOME/Documents/Millie Data"
+DEST="$HOME/Documents/MillieBeanCounter Data"
 TEMP="$(mktemp "${TMPDIR:-/tmp}/millie-export.XXXXXX")" || die "Couldn't make a temporary file."
 compose run --rm -T sync export --tar >"$TEMP"
 result=$?

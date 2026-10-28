@@ -87,17 +87,20 @@ need_docker() {
 }
 
 stop_old_versions() {
-  # The earlier Android-emulator version ran as Compose project "millie-daycare".
-  # Stop it so two importers never run. Its data volume is left alone.
-  local ids
-  ids="$("$DOCKER_BIN" ps -q --filter "label=com.docker.compose.project=millie-daycare" 2>/dev/null || true)"
-  if [ -n "$ids" ]; then
-    say "Stopping the earlier emulator-based version (its data is kept)..."
-    # shellcheck disable=SC2086
-    "$DOCKER_BIN" update --restart=no $ids >/dev/null 2>&1 || true
-    # shellcheck disable=SC2086
-    "$DOCKER_BIN" stop $ids >/dev/null 2>&1 || true
-  fi
+  # Earlier versions ran as Compose projects "millie-daycare" (Android emulator)
+  # and "millie-sync" (before the MillieBeanCounter name). Stop them so two
+  # copies never run at once. Their data volumes are left alone.
+  local ids project
+  for project in millie-daycare millie-sync; do
+    ids="$("$DOCKER_BIN" ps -q --filter "label=com.docker.compose.project=$project" 2>/dev/null || true)"
+    if [ -n "$ids" ]; then
+      say "Stopping the earlier version ($project). Its data is kept..."
+      # shellcheck disable=SC2086
+      "$DOCKER_BIN" update --restart=no $ids >/dev/null 2>&1 || true
+      # shellcheck disable=SC2086
+      "$DOCKER_BIN" stop $ids >/dev/null 2>&1 || true
+    fi
+  done
   # The version before that used a Mac scheduled job. Turn it off if it's still there.
   [ "$(uname -s)" = "Darwin" ] || return 0
   local label="local.millie.daycare-import"
@@ -110,6 +113,14 @@ stop_old_versions() {
   fi
 }
 
+adopt_old_data() {
+  # Before 2.0 the data volume was "millie-sync-data". Copy its settings and
+  # history into this version's volume the first time (the old volume is kept).
+  "$DOCKER_BIN" volume inspect millie-sync-data >/dev/null 2>&1 || return 0
+  compose run --rm -T -v millie-sync-data:/old sync adopt-old-data /old ||
+    die "Couldn't copy the settings from the earlier version. The reason is above."
+}
+
 # ask VAR "Question" "suggestion"
 ask() {
   local __name="$1" __question="$2" __default="${3:-}" __reply=""
@@ -119,6 +130,24 @@ ask() {
     read -r -p "$__question: " __reply || true
   fi
   [ -n "$__reply" ] || __reply="$__default"
+  printf -v "$__name" '%s' "$__reply"
+}
+
+# ask_required VAR "Question" "suggestion"   Like ask, but asks again until there's an answer.
+ask_required() {
+  local __name="$1" __question="$2" __default="${3:-}" __reply="" __prompt
+  __prompt="$__question: "
+  [ -z "$__default" ] || __prompt="$__question [$__default]: "
+  while :; do
+    __reply=""
+    if ! read -r -p "$__prompt" __reply && [ -z "$__reply" ] && [ -z "$__default" ]; then
+      echo
+      die "No answer was typed. Run ${0##*/} again."
+    fi
+    [ -n "$__reply" ] || __reply="$__default"
+    if [ -n "$__reply" ]; then break; fi
+    say "   This one is required."
+  done
   printf -v "$__name" '%s' "$__reply"
 }
 
@@ -143,7 +172,7 @@ ask_secret() {
   while :; do
     if ! read -r -s -p "$__question ($__hint): " __reply; then
       echo
-      die "No answer was typed. Run Setup.command again."
+      die "No answer was typed. Run ${0##*/} again."
     fi
     echo
     if [ -n "$__reply" ] || [ "$__saved" = "yes" ]; then break; fi

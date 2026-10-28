@@ -8,7 +8,7 @@ CSV_PATH=""
 read -r -p "> " CSV_PATH || true
 CSV_PATH="$(dragged_path "$CSV_PATH")"
 [ -f "$CSV_PATH" ] || die "Couldn't find that file: $CSV_PATH"
-DEST="$HOME/Documents/Millie Data"
+DEST="$HOME/Documents/MillieBeanCounter Data"
 TEMP="$(mktemp "${TMPDIR:-/tmp}/millie-export.XXXXXX")" || die "Couldn't make a temporary file."
 compose run --rm -T sync export --tar --compare <"$CSV_PATH" >"$TEMP"
 result=$?

@@ -3,8 +3,8 @@
 !Dockerfile
 !requirements.txt
 !constraints.txt
-!millie_sync/
-!millie_sync/**
+!millie_bean_counter/
+!millie_bean_counter/**
 !tests/
 !tests/**
 **/__pycache__
