@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.zip
+.ruff_cache/
+# Your data lives outside this folder, but just in case:
+Millie Data/
+*.db
+millie-export.*

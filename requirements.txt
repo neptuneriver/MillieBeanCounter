@@ -1,0 +1,10 @@
+# Reverse-engineered Huckleberry client: https://github.com/Woyken/py-huckleberry-api
+# 0.4.8 is the newest release on PyPI. When 0.4.9 is published, changing this line to
+# huckleberry-api==0.4.9 adds the "offered X oz" note to bottle entries automatically.
+huckleberry-api==0.4.8
+# Writes the Excel workbook in the data export (pure Python).
+openpyxl==3.1.5
+# Google Sheets copy of the export. Both already come with the Huckleberry library
+# (through google-cloud-firestore); listed because the code uses them directly.
+google-auth
+requests

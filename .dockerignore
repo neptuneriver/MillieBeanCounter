@@ -1,0 +1,11 @@
+# Only the code goes into the image. Nothing personal from this folder.
+*
+!Dockerfile
+!requirements.txt
+!constraints.txt
+!millie_sync/
+!millie_sync/**
+!tests/
+!tests/**
+**/__pycache__
+**/*.pyc
