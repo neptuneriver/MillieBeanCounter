@@ -326,7 +326,18 @@ been asleep (it looks back 7 days). In Docker Desktop, Settings > General >
 | Run Now.command | Checks Gmail right now instead of waiting |
 | Preview.command | Shows what it would do right now, without writing anything |
 | Stop.command, Start.command | Pause and resume (nothing is lost) |
-| Setup.command | Change settings, or install an updated version of this folder |
+| Setup.command | Change settings |
+| Update.command | Install a newer version of this folder (see below) |
+
+### Updating
+
+After pulling a newer version (or unzipping one over this folder), double-click
+**Update.command**. It builds the new version (every test runs during the build),
+checks that it can still sign in to Gmail, Huckleberry and Google, and only then
+switches the background sync over to it. If the build or the check fails, nothing
+changes and the version you have running keeps running. Settings and history are
+kept either way. Docker Desktop's image scan (Images > the image > vulnerabilities)
+shows whether any of the libraries inside need updating.
 
 ### Coming from millie-sync
 
@@ -346,7 +357,7 @@ to set one, but that isn't guaranteed to work for those accounts.
 
 Because the connection is unofficial, an update on Huckleberry's side could break it.
 You'd get a problem email. The usual fix is a newer py-huckleberry-api: change its
-version in `requirements.txt` and run Setup.command again. (Versions 0.4.9 and newer
+version in `requirements.txt` and run Update.command. (Versions 0.4.9 and newer
 also save the "offered 4.5 oz" note on bottles.)
 
 ## If something seems off

@@ -4,7 +4,7 @@ name: millie_bean_counter
 services:
   sync:
     build: .
-    image: millie_bean_counter:2.0.0
+    image: millie_bean_counter:2.0.1
     pull_policy: never
     init: true
     restart: unless-stopped
