@@ -421,10 +421,17 @@ Other commands: `docker compose run --rm -T sync check` (test the connections),
 * The container runs as a non-root user, with a read-only filesystem, no Linux
   capabilities and a memory limit. Only the code goes into the image (see
   `.dockerignore`).
+* The image is slimmed down at build time (`tools/slim_image.py`). It gets Debian's
+  latest security updates; then pip and the Debian tools the sync never runs (the
+  shell, apt, coreutils, tar, perl, util-linux and a few more) are removed, files and
+  package records both, so their known vulnerabilities go with them. What's left is
+  copied into an empty image and every test runs against it. The libraries Python
+  itself needs (glibc, OpenSSL, SQLite, zlib) stay. When Debian publishes a fix for
+  one of them, the next Update.command picks it up.
 
 ## Tests
 
-The test suite (138 tests) runs inside every Docker build, and the build stops if
+The test suite (143 tests) runs inside every Docker build, and the build stops if
 any test fails.
 
 * The parser tests use a made-up daily sheet in Kaymbu's exact email format, both as
@@ -474,6 +481,7 @@ With Python 3.14 and the packages in `requirements.txt` installed,
 | `millie_bean_counter/service.py` | The always-on loop, status and health check |
 | `millie_bean_counter/config.py` | Settings and their checks |
 | `millie_bean_counter/__main__.py` | The command line the `.command` files use |
+| `tools/slim_image.py` | Removes what the sync never uses from the image at build time |
 | `scripts/` and `*.command` | The Mac launchers |
 | `tests/` | The test suite, with stand-ins for Gmail, Huckleberry's database and Google Drive |
 

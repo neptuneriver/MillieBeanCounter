@@ -7,5 +7,7 @@
 !millie_bean_counter/**
 !tests/
 !tests/**
+!tools/
+!tools/**
 **/__pycache__
 **/*.pyc
